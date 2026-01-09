@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Türkiye Seçim Simülatörü V5</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Load Poll Data -->
+    <script src="polls.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+
+        /* CustomScroll */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+
+<body class="gradient-bg min-h-screen text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-6">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl md:text-4xl font-bold mb-2 text-slate-800 tracking-tight">Türkiye Seçim Simülatörü V5
+            </h1>
+            <p class="text-slate-600">İttifak Sistemi + D'Hondt + Fırsat Haritası + Ulusal Özet</p>
+        </header>
+
+        <!-- CONFIGURATION GRID -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+
+            <!-- LEFT: Polls & Alliances -->
+            <div class="lg:col-span-4 space-y-6">
+                <!-- Poll Selection -->
+                <div class="glass rounded-xl shadow-md p-5">
+                    <h2 class="text-lg font-bold mb-3 border-b pb-2">1. Anket Verisi</h2>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Dönem Seçin</label>
+                    <select id="pollDateSelect" class="w-full p-2 border rounded text-sm mb-3">
+                        <!-- Populated via JS -->
+                    </select>
+
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Veri Tipi</label>
+                    <div class="flex space-x-4 mb-3">
+                        <label class="flex items-center"><input type="radio" name="pollType" value="means" checked
+                                class="mr-2"> Ortalama</label>
+                        <label class="flex items-center"><input type="radio" name="pollType" value="medians"
+                                class="mr-2"> Ortanca</label>
+                    </div>
+
+                    <!-- Matrix Config -->
+                    <div class="border-t pt-3 mt-3">
+                        <label class="block text-xs font-bold text-gray-600 mb-1">Matris İterasyon (RAS)</label>
+                        <input type="number" id="matrixIterations" value="50000" min="10000" max="100000" step="1000"
+                            class="w-full p-1 border rounded text-center text-sm">
+                        <p class="text-[10px] text-gray-400 mt-1">Değişimde "Simülasyonu Başlat"a tekrar basın.</p>
+                    </div>
+                </div>
+
+                <!-- Alliance Config -->
+                <div class="glass rounded-xl shadow-md p-5">
+                    <h2 class="text-lg font-bold mb-3 border-b pb-2">2. İttifak Senaryosu</h2>
+                    <p class="text-xs text-gray-500 mb-3">Partileri ittifaklara atayın.</p>
+
+                    <div id="allianceContainer" class="space-y-3">
+                        <!-- Alliance Groups Generated Here -->
+                    </div>
+
+                    <button onclick="addAlliance()"
+                        class="mt-3 text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">+ İttifak Ekle</button>
+                    <div class="mt-4 flex items-center">
+                        <label class="text-sm mr-2 font-bold">Baraj (%):</label>
+                        <input type="number" id="threshold" value="7" class="w-16 p-1 border rounded text-center">
+                    </div>
+                </div>
+
+                <button onclick="runSimulation()"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition transform hover:scale-[1.02]">
+                    Simülasyonu Başlat
+                </button>
+            </div>
+
+            <!-- RIGHT: Priority Analysis (New Feature) -->
+            <div class="lg:col-span-8 glass rounded-xl shadow-md p-5 flex flex-col h-[600px]">
+                <div class="flex justify-between items-center border-b pb-2 mb-4">
+                    <h2 class="text-lg font-bold">3. Öncelik Analizi (Fırsat Haritası)</h2>
+                    <div class="flex items-center space-x-2">
+                        <label class="text-sm">Analiz Edilecek Parti:</label>
+                        <select id="analysisParty" class="p-1 border rounded text-sm" onchange="updatePriorityList()">
+                            <!-- Parties -->
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-y-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-50 sticky top-0">
+                            <tr>
+                                <th class="p-2 text-left">Sıra</th>
+                                <th class="p-2 text-left">Şehir</th>
+                                <th class="p-2 text-left">Mevcut MV</th>
+                                <th class="p-2 text-left">Gereken Ek Oy (%)</th>
+                                <th class="p-2 text-left">Hedef (Kimin?)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="priorityTableBody">
+                            <tr>
+                                <td colspan="5" class="p-4 text-center text-gray-500">Simülasyon çalıştırıldıktan sonra
+                                    veriler görünecektir.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- RESULTS DASHBOARD -->
+        <div id="dashboard" class="hidden space-y-8 animate-fade-in">
+
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="glass p-4 rounded-lg border-l-4 border-orange-500">
+                    <h4 class="text-xs text-gray-500 uppercase">Parlamento Çoğunluğu</h4>
+                    <p id="parlMajority" class="text-sm font-bold">-</p>
+                </div>
+                <div class="glass p-4 rounded-lg border-l-4 border-blue-500">
+                    <h4 class="text-xs text-gray-500 uppercase">Toplam MV Sayısı</h4>
+                    <p class="text-lg font-bold">600</p>
+                </div>
+                <!-- Top 2 Alliances -->
+                <div class="glass p-4 rounded-lg border-l-4 border-red-500">
+                    <h4 class="text-xs text-gray-500 uppercase">1. İttifak/Parti</h4>
+                    <p id="topAllianceSeat" class="text-lg font-bold">-</p>
+                </div>
+                <div class="glass p-4 rounded-lg border-l-4 border-yellow-500">
+                    <h4 class="text-xs text-gray-500 uppercase">2. İttifak/Parti</h4>
+                    <p id="secondAllianceSeat" class="text-lg font-bold">-</p>
+                </div>
+            </div>
+
+            <!-- National Results Table (New V5) -->
+            <div class="glass p-6 rounded-xl shadow-md overflow-hidden">
+                <h3 class="text-xl font-semibold mb-4 text-center">Ulusal Seçim Sonuçları</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-center divide-y divide-gray-200">
+                        <thead class="bg-indigo-50">
+                            <tr>
+                                <th class="px-4 py-2">İttifak / Parti</th>
+                                <th class="px-4 py-2">Oy Oranı (%)</th>
+                                <th class="px-4 py-2">MV Sayısı</th>
+                                <th class="px-4 py-2">Baraj Durumu</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nationalTableBody" class="bg-white divide-y divide-gray-200 text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Seat Distribution Chart & Matrix -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Chart -->
+                <div class="glass p-6 rounded-xl shadow-md">
+                    <h3 class="text-xl font-semibold mb-4 text-center">Parlamento Dağılımı (Sandalye)</h3>
+                    <div class="h-64">
+                        <canvas id="seatsChart"></canvas>
+                    </div>
+                </div>
+                <!-- Transition Matrix -->
+                <div class="glass p-6 rounded-xl shadow-md overflow-x-auto">
+                    <h3 class="text-xl font-semibold mb-4 text-center">Oy Geçiş Matrisi (Tahmini)</h3>
+                    <div id="matrixContainer" class="text-xs font-mono">
+                        <!-- Matrix Injected Here -->
+                    </div>
+                    <p class="text-[10px] text-gray-400 mt-2 text-center">Satırlar: 2023 Seçmeni, Sütunlar: 2025
+                        Tercihi. Mavi yoğunluğu oy geçişini gösterir.</p>
+                </div>
+            </div>
+
+            <!-- City MP Details Table -->
+            <div class="glass p-6 rounded-xl shadow-md overflow-hidden">
+                <h3 class="text-xl font-semibold mb-4">İl İl Detaylı Sonuçlar (MV Dağılımı)</h3>
+                <div class="overflow-x-auto max-h-[400px]">
+                    <div class="text-xs text-gray-500 mb-2">* Yeşiller: Vekil çıkaranlar.</div>
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50 sticky top-0 z-10">
+                            <tr id="cityTableHeader"></tr>
+                        </thead>
+                        <tbody id="cityTableBody" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- City Vote % Details Table -->
+            <div class="glass p-6 rounded-xl shadow-md overflow-hidden">
+                <h3 class="text-xl font-semibold mb-4">İl İl Oy Oranları (%)</h3>
+                <div class="overflow-x-auto max-h-[500px]">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-blue-50 sticky top-0 z-10">
+                            <tr id="cityVotesTableHeader"></tr>
+                        </thead>
+                        <tbody id="cityVotesTableBody" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA & STATE ---
+        const parties = ["AKP", "CHP", "MHP", "IYI", "DEM", "YRP", "ZP", "TIP", "BBP", "A"];
+        // BBP Added
+        const partyColors = {
+            "AKP": "#FF9900", "CHP": "#E30000", "MHP": "#800000", "IYI": "#3DB5E6",
+            "DEM": "#A020F0", "YRP": "#FF0000", "ZP": "#8B0000", "TIP": "#8B0000", "BBP": "#bb0000", "A": "#0000FF", "BAĞIMSIZ": "#999"
+        };
+
+        let allianceState = {
+            "Cumhur": ["AKP", "MHP", "BBP", "YRP"], // BBP Added
+            "Millet/Muhalefet": ["CHP", "IYI"],
+            "Sol": ["DEM", "TIP"],
+            "Diğer": ["ZP", "A", "Others"]
+        };
+
+        // 2023 Data embedded (reusing V1)
+        const csvData = `Sira No,Il Adi,Milletvekili sayisi,Toplam Gecerli Oy,BBP,AK PARTI,YENIDEN REFAH,MHP,CHP,IYI PARTI,ZAFER PARTISI,DEM,TIP
+1,ADANA,15,1378331,12594,421572,24556,149861,398645,149935,29480,133770,31347
+2,ADIYAMAN,5,314939,3119,165550,15169,12754,58397,0,1955,38042,0
+3,AFYONKARAHISAR,6,471248,5145,209089,14013,75657,88380,59015,10604,1507,1020
+4,AGRI,4,212257,605,52483,4186,4805,22771,3466,0,118684,0
+5,AKSARAY,4,250917,5304,110621,6465,52466,2,63281,3379,1477,628
+6,AMASYA,3,230956,1914,91571,4133,38680,68984,16590,3486,780,845
+7,ANKARA-1,13,1361329,11737,332736,26453,109393,575170,179283,41141,53827,0
+8,ANKARA-2,11,1149060,16194,481080,40204,136526,237934,133811,40189,25120,13071
+9,ANKARA-3,12,1331171,21035,425880,36563,142189,374117,186564,49077,32799,32647
+10,ANTALYA,17,1661284,10993,476582,20738,163915,543903,190186,47322,78461,76491
+11,ARDAHAN,2,53898,186,18680,532,1594,16166,2619,570,11723,0
+12,ARTVIN,2,114073,438,42254,2701,10857,34508,15069,1344,981,1716
+13,AYDIN,8,768239,6546,217092,5570,64983,277706,100533,17282,55478,0
+14,BALIKESIR,9,881676,6069,303728,18373,70651,281637,130339,18326,17642,10672
+15,BARTIN,2,131686,595,48764,2324,30933,41681,0,1911,419,0
+16,BATMAN,5,325582,995,93243,3448,3675,25771,0,0,193025,0
+17,BAYBURT,1,49046,360,29498,1452,8122,0,7980,667,207,96
+18,BILECIK,2,149866,1291,55730,4911,15251,40413,18467,3382,3954,1242
+19,BINGOL,3,144717,783,57100,14562,19401,7549,2818,0,35315,0
+20,BITLIS,3,173436,561,64471,3635,6161,0,22914,0,70825,0
+21,BOLU,3,210825,1594,78265,6851,49262,46165,15782,4063,1717,1142
+22,BURDUR,3,178884,1243,65267,2157,24960,56174,20640,2575,1105,0
+23,BURSA-1,10,1092375,9001,390460,34293,85837,299411,150123,41943,33529,14607
+24,BURSA-2,10,1013312,6950,430594,41215,91991,217538,103378,36083,56557,0
+25,CANAKKALE,4,390896,1700,123899,3781,25103,140054,64766,7860,7480,4820
+26,CANKIRI,2,123191,1245,52805,3696,38322,0,22241,1895,367,297
+27,CORUM,4,354060,2747,143260,11675,71358,109716,0,5398,1419,1255
+28,DENIZLI,7,709052,10235,239237,9563,58729,229403,101081,18494,16716,7148
+29,DIYARBAKIR,12,896596,1939,201583,13904,10207,69166,19864,0,561265,0
+30,DUZCE,3,265570,2404,132477,10319,42876,59971,0,5754,2549,1151
+31,EDIRNE,4,281477,659,65453,1857,21085,113225,58391,4241,4997,2936
+32,ELAZIG,5,356398,1396,144077,13031,40446,73512,8390,1950,25066,0
+33,ERZINCAN,2,151143,550,58403,2178,29787,54883,0,1460,1553,366
+34,ERZURUM,6,429394,7526,186788,21410,71509,28119,41236,10282,42462,0
+35,ESKISEHIR,6,614299,6793,201830,8717,43670,212328,86097,18617,12020,9924
+36,GAZIANTEP,14,1133176,7828,510424,46838,108261,229703,61542,37425,102986,0
+37,GIRESUN,4,299850,1754,129820,7421,46737,62141,38598,4623,721,1308
+38,GUMUSHANE,2,78192,645,37469,2092,20640,2,14601,860,231,207
+39,HAKKARI,3,148685,445,29435,2931,3988,9917,0,0,95302,0
+40,HATAY,11,864726,7743,291634,15837,104557,247436,70101,11507,26088,75658
+41,IGDIR,2,101639,205,35498,457,4581,6163,6706,0,45388,0
+42,ISPARTA,4,285725,1536,93098,5196,58423,63979,47409,5552,1975,900
+43,ISTANBUL-1,35,3769992,37850,1298399,112619,225296,1203625,295449,102722,234883,175881
+44,ISTANBUL-2,27,2749298,19403,1049912,106588,153043,733861,237942,78649,202700,101991
+45,ISTANBUL-3,36,3556584,24697,1266594,111920,228023,940947,288129,103850,380027,132485
+46,IZMIR-1,14,1486087,7034,370269,12163,68652,632972,178748,34721,134381,0
+47,IZMIR-2,14,1553179,6892,379331,14376,86707,631582,171799,36956,92075,85103
+48,KAHRAMANMARAS,8,627604,9884,301738,34455,101159,100984,44594,10810,7264,0
+49,KARABUK,3,158127,673,59693,13201,25158,34783,15438,3324,632,517
+50,KARAMAN,3,163674,4394,67535,3715,29609,31522,18005,3081,803,444
+51,KARS,3,141217,847,35723,2757,13494,23170,21327,0,40227,0
+52,KASTAMONU,3,251359,2276,114999,10232,37593,54716,19289,4432,543,0
+53,KAYSERI,10,915750,17477,374654,32291,174332,156702,92555,29838,7600,3543
+54,KIRIKKALE,3,176696,1163,63166,3214,37436,47314,18074,2718,528,0
+55,KIRKLARELI,3,260359,1299,64191,1701,12022,120779,40142,4059,4435,4566
+56,KIRSEHIR,2,148589,1475,57729,2372,21997,43773,10797,2900,3677,589
+57,KILIS,2,84073,364,33552,1968,22604,16900,4861,1598,724,0
+58,KOCAELI,14,1359568,15287,538958,79279,112123,327083,130522,43088,77057,0
+59,KONYA,15,1415892,28814,683672,72931,202108,190091,123996,42301,36133,4565
+60,KUTAHYA,5,385562,4564,180937,27636,49940,64304,40917,6648,1031,969
+61,MALATYA,6,425215,5738,192986,39912,54607,91558,16664,4805,12685,0
+62,MANISA,10,987647,13135,312134,15264,137929,293993,110325,22093,55699,0
+63,MARDIN,6,432253,682,106113,4820,13800,28510,4804,2076,242557,0
+64,MERSIN,13,1206319,5404,295274,10721,143041,377350,144623,22013,160674,23998
+65,MUGLA,7,708773,1953,169273,4259,42772,271295,122550,11947,23559,40431
+66,MUS,3,183792,655,38269,5220,30195,0,10275,0,94704,0
+67,NEVSEHIR,3,199220,1778,78757,4002,40585,34725,31921,2552,973,767
+68,NIGDE,3,222259,1244,75314,5848,49847,53932,27442,3252,993,460
+69,ORDU,6,500069,4054,227535,11459,63024,121914,49453,7093,992,1730
+70,OSMANIYE,4,331910,1882,110641,6445,94925,57184,42311,5731,6624,940
+71,RIZE,3,231469,3665,124491,11885,29939,49450,0,4050,689,683
+72,SAKARYA,8,704094,6424,335205,35423,83999,114618,77725,18736,10268,3702
+73,SAMSUN,9,891297,12224,380214,35770,126144,176283,108800,19545,2493,5583
+74,SIIRT,3,160199,442,57159,1880,5804,11555,2272,0,76719,0
+75,SINOP,2,144801,6477,62162,3255,12941,37495,13743,2166,494,1110
+76,SIVAS,5,403906,41064,165234,13925,72782,65342,29554,7307,1723,1509
+77,SANLIURFA,14,956187,4157,411638,28289,88632,72051,43645,0,242215,0
+78,SIRNAK,4,264922,373,54728,1518,5682,21684,2837,3020,170695,0
+79,TEKIRDAG,8,758560,4085,230112,11998,47306,279347,85690,17558,45995,11781
+80,TOKAT,5,390636,11097,146619,9065,86501,80910,43657,5439,1197,1211
+81,TRABZON,6,533167,8227,256125,24324,57206,95694,65444,9903,1597,1339
+82,TUNCELI,1,56010,165,6815,547,3006,18067,1234,0,24571,0
+83,USAK,3,247618,1619,88805,3494,22803,72810,43858,4025,3216,851
+84,VAN,8,529624,4429,135592,16656,25514,43459,0,4101,287429,0
+85,YALOVA,3,174301,1123,59356,3684,19620,50581,16781,4030,9789,1774
+86,YOZGAT,4,255131,4199,112106,11216,58930,4,59685,3323,884,474
+87,ZONGULDAK,5,392013,3338,156835,9850,32436,127274,39469,7064,1287,1171`;
+
+        // --- INIT ---
+        let currentPollData = {};
+        let parsedCityData = [];
+        let projection = [];
+        let transitions = [];
+        let currentEligibleParties = [];
+        // V5: Added BBP to targets
+        let targetKeys = ["AKP", "CHP", "MHP", "IYI", "DEM", "YRP", "ZP", "TIP", "BBP", "A", "Others"];
+        const sourceKeys = ["AK PARTI", "CHP", "MHP", "IYI PARTI", "DEM", "YENIDEN REFAH", "ZAFER PARTISI", "TIP", "BBP", "Others"];
+
+        function init() {
+            // Populate Dates
+            if (window.poll_history) {
+                const dates = window.poll_history.means.map(d => d.date);
+                const sel = document.getElementById('pollDateSelect');
+                dates.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d;
+                    opt.innerText = d;
+                    sel.appendChild(opt);
+                });
+            }
+
+            // Populate Party List for Analysis
+            const pSel = document.getElementById('analysisParty');
+            targetKeys.filter(k => k !== 'Others').forEach(k => {
+                const opt = document.createElement('option');
+                opt.value = k;
+                opt.innerText = k;
+                if (k === 'CHP') opt.selected = true;
+                pSel.appendChild(opt);
+            });
+
+            // Parse City Data
+            parsedCityData = parseCSV(csvData).data;
+            // Clean nums
+            parsedCityData.forEach(c => {
+                for (let k in c) if (k !== 'Il Adi' && k !== 'Sira No') c[k] = parseInt(c[k]) || 0;
+                // Calc 2023 Others
+                let m = 0;
+                // Include BBP in sum if it exists in CSV
+                ["AK PARTI", "CHP", "MHP", "IYI PARTI", "DEM", "YENIDEN REFAH", "ZAFER PARTISI", "TIP", "BBP"].forEach(p => m += c[p] || 0);
+                c["Others"] = c["Toplam Gecerli Oy"] - m;
+                if (c["Others"] < 0) c["Others"] = 0;
+            });
+
+            renderAlliances();
+        }
+
+        // --- ALLIANCE UI ---
+        function renderAlliances() {
+            const container = document.getElementById('allianceContainer');
+            container.innerHTML = "";
+            for (let name in allianceState) {
+                const div = document.createElement('div');
+                div.className = "p-2 border rounded bg-white relative group";
+                div.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <input type="text" value="${name}" class="font-bold text-sm w-1/2 border-none focus:ring-0 bg-transparent" onchange="renameAlliance('${name}', this.value)">
+                        <button onclick="removeAlliance('${name}')" class="text-red-500 text-xs hover:bg-red-50 px-2 rounded">Sil</button>
+                    </div>
+                    <div class="flex flex-wrap gap-1 min-h-[30px] bg-slate-50 rounded p-1 mb-2" ondrop="drop(event, '${name}')" ondragover="allowDrop(event)">
+                        ${allianceState[name].map(p => shiftPartyBadge(p, name)).join('')}
+                    </div>
+                    <!-- Party Adder -->
+                    <div class="flex gap-1">
+                        <select id="sel-${name.replace(/\s/g, '')}" class="text-xs border rounded w-full p-1">
+                             <option value="">Parti Ekle...</option>
+                             ${parties.map(p => `<option value="${p}">${p}</option>`).join('')}
+                        </select>
+                        <button onclick="addPartyToAlliance('${name}', document.getElementById('sel-${name.replace(/\s/g, '')}').value)" class="bg-gray-200 hover:bg-gray-300 text-xs px-2 rounded">+</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        function addPartyToAlliance(allianceName, party) {
+            if (!party) return;
+            for (let a in allianceState) {
+                allianceState[a] = allianceState[a].filter(p => p !== party);
+            }
+            allianceState[allianceName].push(party);
+            renderAlliances();
+        }
+
+        function addAlliance() {
+            let i = 1;
+            while (allianceState[`Yeni İttifak ${i}`]) i++;
+            const newName = `Yeni İttifak ${i}`;
+            allianceState[newName] = [];
+            renderAlliances();
+        }
+
+        function removeAlliance(name) {
+            delete allianceState[name];
+            renderAlliances();
+        }
+
+        function renameAlliance(oldName, newName) {
+            if (oldName === newName) return;
+            if (allianceState[newName]) {
+                alert("Bu isimde bir ittifak zaten var.");
+                renderAlliances();
+                return;
+            }
+            const parties = allianceState[oldName];
+            delete allianceState[oldName];
+            allianceState[newName] = parties;
+            renderAlliances();
+        }
+
+        function shiftPartyBadge(party, currentGroup) {
+            return `<span draggable="true" ondragstart="drag(event, '${party}', '${currentGroup}')" class="px-2 py-1 text-xs rounded text-white cursor-grab" style="background-color:${partyColors[mapPartyToKey(party)] || '#666'}">${party}</span>`;
+        }
+
+        function allowDrop(ev) { ev.preventDefault(); }
+        function drag(ev, party, group) { ev.dataTransfer.setData("text", JSON.stringify({ p: party, g: group })); }
+        function drop(ev, targetGroup) {
+            ev.preventDefault();
+            const data = JSON.parse(ev.dataTransfer.getData("text"));
+            if (allianceState[data.g]) allianceState[data.g] = allianceState[data.g].filter(x => x !== data.p);
+            if (allianceState[targetGroup]) allianceState[targetGroup].push(data.p);
+            renderAlliances();
+        }
+
+        // --- LOGIC ---
+        function parseCSV(csv) {
+            const lines = csv.trim().split(/\r?\n/);
+            const headers = lines[0].split(',');
+            const data = [];
+            for (let i = 1; i < lines.length; i++) {
+                const row = lines[i].split(',');
+                if (row.length < headers.length) continue;
+                const obj = {};
+                headers.forEach((h, idx) => obj[h] = row[idx]);
+                data.push(obj);
+            }
+            return { headers, data };
+        }
+
+        function solveMatrix(polls, iterations = 40) {
+            // Recalc Source keys in case Init changed them? No, const.
+            const totals2023 = {};
+            sourceKeys.forEach(k => totals2023[k] = 0);
+            let grandTotal = 0;
+            parsedCityData.forEach(c => {
+                sourceKeys.forEach(p => { totals2023[p] += c[p] || 0; grandTotal += c[p] || 0; });
+            });
+
+            const targetTotals = {};
+            // Filter out BBP if not in Polls, assign 1% default
+            let sumP = 0;
+            targetKeys.forEach(k => { if (polls[k]) sumP += polls[k]; });
+
+            // V5: Explicit BBP proxy if not in polls
+            if (!polls['BBP']) {
+                polls['BBP'] = 1.0;
+                sumP += 1.0;
+            }
+
+            const othersPct = Math.max(0, 100 - sumP);
+            targetKeys.forEach(k => {
+                let pct = polls[k] || 0;
+                if (k === "Others") pct = othersPct;
+                targetTotals[k] = (pct / 100) * grandTotal;
+            });
+
+            let matrix = Array(sourceKeys.length).fill(0).map(() => Array(targetKeys.length).fill(0));
+            // Map
+            const mapIdx = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 10 };
+
+            for (let i = 0; i < sourceKeys.length; i++) {
+                for (let j = 0; j < targetKeys.length; j++) {
+                    let val = 0.01;
+                    if (mapIdx[i] === j) val = 0.8;
+                    if (targetKeys[j] === "A") val = 0.05;
+                    matrix[i][j] = val;
+                }
+            }
+
+            let V = matrix.map((row, i) => row.map(v => v * totals2023[sourceKeys[i]]));
+            for (let iter = 0; iter < iterations; iter++) {
+                for (let i = 0; i < sourceKeys.length; i++) {
+                    let sum = V[i].reduce((a, b) => a + b, 0);
+                    if (sum) { let f = totals2023[sourceKeys[i]] / sum; for (let j = 0; j < targetKeys.length; j++) V[i][j] *= f; }
+                }
+                for (let j = 0; j < targetKeys.length; j++) {
+                    let sum = 0; for (let i = 0; i < sourceKeys.length; i++) sum += V[i][j];
+                    if (sum) { let f = targetTotals[targetKeys[j]] / sum; for (let i = 0; i < sourceKeys.length; i++) V[i][j] *= f; }
+                }
+            }
+            return V.map((row) => {
+                const sum = row.reduce((a, b) => a + b, 0);
+                return row.map(v => sum ? v / sum : 0);
+            });
+        }
+
+        // --- SIMULATION ---
+        function runSimulation() {
+            const date = document.getElementById('pollDateSelect').value;
+            const type = document.querySelector('input[name="pollType"]:checked').value;
+            const polls = window.poll_history[type].find(p => p.date === date);
+            if (!polls) { alert("Veri bulunamadı."); return; }
+            currentPollData = polls;
+
+            // V5: Fix Iteration Update Bug by reading fresh value here
+            const iterInput = document.getElementById('matrixIterations').value;
+            const iter = parseInt(iterInput) || 50000;
+
+            const T = solveMatrix(polls, iter);
+            transitions = T;
+
+            projection = parsedCityData.map(city => {
+                const res = { name: city["Il Adi"], mv: city["Milletvekili sayisi"], votes: {}, total: 0 };
+                targetKeys.forEach(k => res.votes[k] = 0);
+
+                sourceKeys.forEach((src, i) => {
+                    const v = city[src] || 0;
+                    T[i].forEach((prob, j) => {
+                        res.votes[targetKeys[j]] += v * prob;
+                    });
+                });
+                res.total = Object.values(res.votes).reduce((a, b) => a + b, 0);
+                return res;
+            });
+
+            const threshold = parseFloat(document.getElementById('threshold').value) || 7.0;
+            const natTotals = {};
+            targetKeys.forEach(k => natTotals[k] = 0);
+            projection.forEach(c => targetKeys.forEach(k => natTotals[k] += c.votes[k]));
+            const totalValid = Object.values(natTotals).reduce((a, b) => a + b, 0);
+
+            const partyToAlliance = {};
+            for (let aName in allianceState) {
+                allianceState[aName].forEach(pRaw => {
+                    let k = mapPartyToKey(pRaw);
+                    if (targetKeys.includes(k)) partyToAlliance[k] = aName;
+                });
+            }
+
+            const allianceShares = {};
+            for (let k in natTotals) {
+                const aName = partyToAlliance[k] || "Bagimsiz_" + k;
+                allianceShares[aName] = (allianceShares[aName] || 0) + natTotals[k];
+            }
+            // V5: Strict Eligible List 
+            // A party is eligible if it's in an Alliance > 7% OR if it looks Standalone > 7%
+            const eligibleParties = [];
+            for (let k in natTotals) {
+                const aName = partyToAlliance[k] || "Bagimsiz_" + k;
+                const alliancePct = (allianceShares[aName] / totalValid * 100);
+                if (alliancePct >= threshold) {
+                    eligibleParties.push(k);
+                }
+            }
+
+            let totalSeats = {};
+            targetKeys.forEach(k => totalSeats[k] = 0);
+
+            projection.forEach(city => {
+                city.seats = calculateDhondtAlliance(city.votes, city.mv, eligibleParties, partyToAlliance);
+                for (let k in city.seats) totalSeats[k] += city.seats[k];
+            });
+
+            updateDashboard(totalSeats, projection, polls, natTotals, totalValid, allianceShares);
+            currentEligibleParties = eligibleParties;
+            updatePriorityList();
+        }
+
+        function calculateDhondtAlliance(votes, seats, eligibleParties, partyToAlliance) {
+            // V5: Filter votes to only include eligible parties
+            // If a party is NOT eligible, its votes don't count for D'Hondt at all
+            const validVotes = {};
+            eligibleParties.forEach(p => {
+                if (votes[p]) validVotes[p] = votes[p];
+            });
+
+            const allianceVotes = {};
+            for (let p in validVotes) {
+                const aName = partyToAlliance[p] || "Bagimsiz_" + p;
+                allianceVotes[aName] = (allianceVotes[aName] || 0) + validVotes[p];
+            }
+
+            const allianceSeats = {};
+            for (let a in allianceVotes) allianceSeats[a] = 0;
+
+            const tempVotes = { ...allianceVotes };
+            for (let i = 0; i < seats; i++) {
+                let bestA = null;
+                let maxV = -1;
+                for (let a in tempVotes) {
+                    if (tempVotes[a] > maxV) { maxV = tempVotes[a]; bestA = a; }
+                }
+                if (bestA) {
+                    allianceSeats[bestA]++;
+                    tempVotes[bestA] = allianceVotes[bestA] / (allianceSeats[bestA] + 1);
+                }
+            }
+
+            const finalSeats = {};
+            eligibleParties.forEach(p => finalSeats[p] = 0);
+
+            for (let aName in allianceSeats) {
+                const won = allianceSeats[aName];
+                if (won === 0) continue;
+                const members = eligibleParties.filter(p => (partyToAlliance[p] || "Bagimsiz_" + p) === aName);
+                if (members.length === 1) {
+                    finalSeats[members[0]] = won;
+                } else {
+                    const memberVotes = {};
+                    members.forEach(p => memberVotes[p] = validVotes[p]); // Use validVotes
+                    const memberCounts = {};
+                    members.forEach(p => memberCounts[p] = 0);
+                    const tV = { ...memberVotes };
+                    for (let k = 0; k < won; k++) {
+                        let bestP = null;
+                        let mMax = -1;
+                        for (let p of members) {
+                            if (tV[p] > mMax) { mMax = tV[p]; bestP = p; }
+                        }
+                        if (bestP) {
+                            memberCounts[bestP]++;
+                            tV[bestP] = memberVotes[bestP] / (memberCounts[bestP] + 1);
+                        }
+                    }
+                    for (let px in memberCounts) finalSeats[px] = memberCounts[px];
+                }
+            }
+            return finalSeats;
+        }
+
+        function mapPartyToKey(p) {
+            if (p.includes("AKP") || p.includes("AK")) return "AKP";
+            if (p.includes("MHP")) return "MHP";
+            if (p.includes("CHP")) return "CHP";
+            if (p.includes("IYI")) return "IYI";
+            if (p.includes("DEM")) return "DEM";
+            if (p.includes("REFAH") || p == "YRP") return "YRP";
+            if (p.includes("ZAFER") || p == "ZP") return "ZP";
+            if (p.includes("TIP")) return "TIP";
+            if (p.includes("BBP")) return "BBP";
+            if (p.includes("A") || p == "ANAHTAR") return "A";
+            return p;
+        }
+
+        function updatePriorityList(eligibleParties) {
+            if (projection.length === 0) return;
+            const targetParty = document.getElementById('analysisParty').value;
+            const opportunities = [];
+
+            // Use global eligible list if arg is missing
+            const eligible = (eligibleParties && eligibleParties.length) ? eligibleParties : (currentEligibleParties.length ? currentEligibleParties : null);
+
+            // V5: Only consider eligible parties as victims
+            if (eligible && !eligible.includes(targetParty)) {
+                document.getElementById('priorityTableBody').innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-500 font-bold">Seçilen parti baraj altı kaldığı için vekil çıkaramaz. (İttifak kontrol ediniz)</td></tr>';
+                return;
+            }
+
+            projection.forEach(city => {
+                const currentSeats = city.seats[targetParty] || 0;
+
+                // V5: Only members who are ELIGIBLE can be part of the math
+                const members = targetKeys.filter(k => k !== 'Others' && (eligible ? eligible.includes(k) : true));
+
+                const quotients = [];
+                for (let p of members) {
+                    const v = city.votes[p];
+                    for (let s = 1; s <= city.mv; s++) quotients.push({ p: p, q: v / s });
+                }
+                quotients.sort((a, b) => b.q - a.q);
+
+                // If city has 5 seats, winners are top 5
+                const winners = quotients.slice(0, city.mv);
+                if (winners.length === 0) return;
+
+                // Fix V5: Find lowest winner that is NOT me
+                const othersWinners = winners.filter(w => w.p !== targetParty);
+                if (othersWinners.length === 0) return; // Owns all seats or no winners
+
+                const victimObj = othersWinners[othersWinners.length - 1];
+                const cutOff = victimObj.q;
+                const victim = victimObj.p;
+
+                const myNextDivisor = currentSeats + 1;
+                const neededVotesTotal = cutOff * myNextDivisor;
+                const margin = neededVotesTotal - city.votes[targetParty];
+
+                if (margin > 0) {
+                    const pct = (margin / city.total) * 100;
+                    opportunities.push({
+                        city: city.name,
+                        current: currentSeats,
+                        marginPct: pct,
+                        victim: victim
+                    });
+                }
+            });
+
+            opportunities.sort((a, b) => a.marginPct - b.marginPct);
+
+            const tbody = document.getElementById('priorityTableBody');
+            tbody.innerHTML = opportunities.slice(0, 30).map((o, idx) => `
+                <tr class="hover:bg-gray-50 border-b">
+                    <td class="p-2 font-bold text-gray-500">${idx + 1}</td>
+                    <td class="p-2 font-medium">${o.city}</td>
+                    <td class="p-2">${o.current}</td>
+                    <td class="p-2 text-green-600 font-bold">%${o.marginPct.toFixed(2)}</td>
+                    <td class="p-2 text-xs text-gray-500">${o.victim}'den alacak</td>
+                </tr>
+            `).join('');
+        }
+
+        function updateDashboard(totalSeats, projection, polls, natTotals, totalValid, allianceShares) {
+            document.getElementById('dashboard').classList.remove('hidden');
+
+            // Calc Alliance Seat Totals for Majority
+            const allianceSeatTotals = {};
+            for (let p in totalSeats) {
+                // Find which alliance this party belongs to in current allianceState
+                let foundA = null;
+                for (let a in allianceState) {
+                    if (allianceState[a].includes(p)) foundA = a;
+                }
+                const k = foundA || "Bagimsiz_" + p;
+                allianceSeatTotals[k] = (allianceSeatTotals[k] || 0) + totalSeats[p];
+            }
+
+            // Majority Check (V5)
+            const sortedA = Object.entries(allianceSeatTotals).sort((a, b) => b[1] - a[1]);
+            const winnerA = sortedA[0];
+            const majText = winnerA[1] >= 301 ? `EVET (${winnerA[0]})` : "HAYIR";
+            document.getElementById('parlMajority').innerText = majText;
+
+            // Top Cards
+            if (sortedA[0]) document.getElementById('topAllianceSeat').innerText = `${sortedA[0][0]}: ${sortedA[0][1]}`;
+            if (sortedA[1]) document.getElementById('secondAllianceSeat').innerText = `${sortedA[1][0]}: ${sortedA[1][1]}`;
+
+            // V5: National Table
+            const tbNat = document.getElementById('nationalTableBody');
+            let natHtml = "";
+            // Combine Party + Alliance info
+            // Group by Alliance
+            for (let aName in allianceState) {
+                const members = allianceState[aName];
+                if (members.length === 0) continue;
+
+                // Alliance Header
+                const aVotes = allianceShares[aName] || 0;
+                const aSeats = allianceSeatTotals[aName] || 0;
+                const aPct = (aVotes / totalValid * 100).toFixed(2);
+
+                natHtml += `<tr class="bg-gray-100 font-bold"><td class="p-2 text-left">${aName}</td><td>%${aPct}</td><td>${aSeats}</td><td class="text-xs text-gray-500">${aVotes > 0 && parseFloat(document.getElementById('threshold').value) <= parseFloat(aPct) ? 'Barajı Geçti' : 'Kaldı'}</td></tr>`;
+
+                // Members
+                members.forEach(p => {
+                    if (targetKeys.includes(mapPartyToKey(p))) {
+                        const mk = mapPartyToKey(p);
+                        const v = natTotals[mk] || 0;
+                        const s = totalSeats[mk] || 0;
+                        const pct = (v / totalValid * 100).toFixed(2);
+                        natHtml += `<tr><td class="p-2 pl-6 text-left text-gray-600">- ${p}</td><td>%${pct}</td><td>${s}</td><td>-</td></tr>`;
+                    }
+                });
+            }
+
+            // Add independent parties not in allianceState
+            targetKeys.filter(k => k !== 'Others').forEach(k => {
+                let found = false;
+                for (let a in allianceState) if (allianceState[a].includes(k)) found = true;
+                if (!found) {
+                    const v = natTotals[k] || 0;
+                    const s = totalSeats[k] || 0;
+                    const pct = (v / totalValid * 100).toFixed(2);
+                    natHtml += `<tr><td class="p-2 font-bold text-left">${k}</td><td>%${pct}</td><td>${s}</td><td>${parseFloat(pct) >= 7 ? 'Geçti' : 'Kaldı'}</td></tr>`;
+                }
+            });
+
+            tbNat.innerHTML = natHtml;
+
+
+            // Chart (By Alliance now? Or Party? Keep Party for Detail)
+            const sortedP = Object.entries(totalSeats).sort((a, b) => b[1] - a[1]);
+            const ctx = document.getElementById('seatsChart').getContext('2d');
+            if (window.seatChart) window.seatChart.destroy();
+            window.seatChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: sortedP.map(s => s[0]),
+                    datasets: [{
+                        data: sortedP.map(s => s[1]),
+                        backgroundColor: sortedP.map(s => partyColors[s[0]] || '#999')
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // Matrix
+            let mHtml = '<div class="grid grid-cols-12 gap-0.5 text-[9px]">'; // V5: 1 header + 11 cols (added BBP)
+            mHtml += '<div class="bg-gray-200 p-1 font-bold">2023\\25</div>';
+            targetKeys.forEach(k => mHtml += `<div class="bg-gray-100 p-1 font-bold truncate">${k}</div>`);
+            transitions.forEach((row, i) => {
+                mHtml += `<div class="bg-gray-100 p-1 font-bold truncate">${sourceKeys[i]}</div>`;
+                row.forEach(val => {
+                    const style = `background-color: rgba(59, 130, 246, ${val * 0.8 + 0.05})`;
+                    mHtml += `<div class="p-1 text-center" style="${style}">${(val * 100).toFixed(0)}%</div>`;
+                });
+            });
+            mHtml += '</div>';
+            document.getElementById('matrixContainer').innerHTML = mHtml;
+
+            // MP Table
+            const th = document.getElementById('cityTableHeader');
+            th.innerHTML = '<th class="px-4 py-2">Şehir</th><th class="px-4 py-2">MV</th>' + targetKeys.filter(k => k !== 'Others').map(k => `<th class="px-2 py-2 text-xs">${k}</th>`).join('');
+
+            const tb = document.getElementById('cityTableBody');
+            tb.innerHTML = projection.map(c => {
+                const tds = targetKeys.filter(k => k !== 'Others').map(k => {
+                    const s = c.seats[k] || 0;
+                    return `<td class="${s > 0 ? 'bg-green-50 font-bold text-green-700' : ''} px-2 py-2 text-center border-l">${s > 0 ? s : '-'}</td>`;
+                }).join('');
+                return `<tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">${c.name}</td><td class="px-4 py-2 text-center text-gray-500">${c.mv}</td>${tds}</tr>`;
+            }).join('');
+
+            // Percent Table
+            const thV = document.getElementById('cityVotesTableHeader');
+            thV.innerHTML = '<th class="px-4 py-2 text-left">Şehir</th>' + targetKeys.filter(k => k !== 'Others').map(k => `<th class="px-2 py-2 text-xs">${k} (%)</th>`).join('');
+
+            const tbV = document.getElementById('cityVotesTableBody');
+            tbV.innerHTML = projection.map(c => {
+                const tds = targetKeys.filter(k => k !== 'Others').map(k => {
+                    const pct = (c.votes[k] / c.total * 100).toFixed(1);
+                    return `<td class="px-2 py-2 text-center border-l text-xs">${pct}</td>`;
+                }).join('');
+                return `<tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">${c.name}</td>${tds}</tr>`;
+            }).join('');
+        }
+
+        window.addEventListener('scroll', () => { });
+        setTimeout(init, 500);
+    </script>
+</body>
+
+</html>
