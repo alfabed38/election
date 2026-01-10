@@ -106,8 +106,9 @@
                     class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition transform hover:scale-[1.02]">
                     Simülasyonu Başlat
                 </button>
-                
-                <button onclick="if(confirm('Tüm ayarlar sıfırlanacak ve sayfa yenilenecek. Emin misiniz?')) window.location.reload();" 
+
+                <button
+                    onclick="if(confirm('Tüm ayarlar sıfırlanacak ve sayfa yenilenecek. Emin misiniz?')) window.location.reload();"
                     class="w-full mt-3 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-xl shadow transition transform hover:scale-[1.02] text-sm">
                     Ayarları Sıfırla (Baştan Başla)
                 </button>
@@ -247,12 +248,7 @@
             "DEM": "#A020F0", "YRP": "#FF0000", "ZP": "#8B0000", "TIP": "#8B0000", "BBP": "#bb0000", "A": "#0000FF", "BAĞIMSIZ": "#999"
         };
 
-        let allianceState = {
-            "Cumhur": ["AKP", "MHP", "BBP", "YRP"], // BBP Added
-            "Millet/Muhalefet": ["CHP", "IYI"],
-            "Sol": ["DEM", "TIP"],
-            "Diğer": ["ZP", "A", "Others"]
-        };
+        let allianceState = {};
 
         // 2023 Data embedded (reusing V1)
         const csvData = `Sira No,Il Adi,Milletvekili sayisi,Toplam Gecerli Oy,BBP,AK PARTI,YENIDEN REFAH,MHP,CHP,IYI PARTI,ZAFER PARTISI,DEM,TIP
@@ -390,6 +386,9 @@
                 if (c["Others"] < 0) c["Others"] = 0;
             });
 
+            if (Object.keys(allianceState).length === 0) {
+                allianceState["Yeni İttifak 1"] = [];
+            }
             renderAlliances();
         }
 
@@ -456,8 +455,18 @@
             renderAlliances();
         }
 
+        function removePartyFromAlliance(party, allianceName) {
+            if (allianceState[allianceName]) {
+                allianceState[allianceName] = allianceState[allianceName].filter(p => p !== party);
+                renderAlliances();
+            }
+        }
+
         function shiftPartyBadge(party, currentGroup) {
-            return `<span draggable="true" ondragstart="drag(event, '${party}', '${currentGroup}')" class="px-2 py-1 text-xs rounded text-white cursor-grab" style="background-color:${partyColors[mapPartyToKey(party)] || '#666'}">${party}</span>`;
+            return `<span draggable="true" ondragstart="drag(event, '${party}', '${currentGroup}')" class="px-2 py-1 text-xs rounded text-white cursor-grab flex items-center gap-1" style="background-color:${partyColors[mapPartyToKey(party)] || '#666'}">
+                ${party}
+                <button onclick="removePartyFromAlliance('${party}', '${currentGroup}')" class="ml-1 hover:text-red-200 font-bold">×</button>
+            </span>`;
         }
 
         function allowDrop(ev) { ev.preventDefault(); }
